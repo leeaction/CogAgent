@@ -8,7 +8,7 @@ import gradio as gr
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
-    TextIteratorStreamer,
+    TextIteratorStreamer, QuantoConfig
 )
 from typing import List
 import spaces
@@ -80,7 +80,7 @@ def predict(history, max_length, img_path, platform_str, format_str, output_dir)
         return_dict=True,
     ).to(model.device)
     streamer = TextIteratorStreamer(
-        tokenizer, timeout=60, skip_prompt=True, skip_special_tokens=True
+        tokenizer, timeout=300, skip_prompt=True, skip_special_tokens=True
     )
     generate_kwargs = {
         "input_ids": inputs["input_ids"],
@@ -155,6 +155,7 @@ def main():
     parser.add_argument("--format_key", default="action_op_sensitive", help="Key to select the prompt format.")
     parser.add_argument("--platform", default="Mac", help="Platform information string.")
     parser.add_argument("--output_dir", default="annotated_images", help="Directory to save annotated images.")
+    parser.add_argument("--quantization_type", help="Quantization type eg: float8,int8,int4,int2.")
     args = parser.parse_args()
 
     format_dict = {
@@ -170,9 +171,15 @@ def main():
 
     global tokenizer, model
     tokenizer = AutoTokenizer.from_pretrained(args.model_dir, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model_dir, torch_dtype=torch.bfloat16, trust_remote_code=True, device_map="auto"
-    ).eval()
+    if args.quantization_type:
+        quantization_config = QuantoConfig(weights=args.quantization_type)
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_dir, torch_dtype="auto", trust_remote_code=True, device_map="auto", quantization_config=quantization_config
+        ).eval()
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_dir, torch_dtype=torch.bfloat16, trust_remote_code=True, device_map="auto"
+        ).eval()
 
     platform_str = f"(Platform: {args.platform})\n"
     format_str = format_dict[args.format_key]
